@@ -7,6 +7,7 @@ import { z } from 'zod';
 const retrieveSchema = z.object({
     query: z.string(),
     userUuid: z.string(), // In real auth, this comes from session
+    projectId: z.string(),
     affect: z.object({
         joy: z.number().default(0),
         trust: z.number().default(0),
@@ -23,7 +24,7 @@ const retrieveSchema = z.object({
 export async function POST(req: NextRequest) {
     try {
         const body = await req.json();
-        const { query, userUuid, affect } = retrieveSchema.parse(body);
+        const { query, userUuid, projectId, affect } = retrieveSchema.parse(body);
 
         const defaultAffect = {
             joy: 0, trust: 0, fear: 0,
@@ -32,6 +33,7 @@ export async function POST(req: NextRequest) {
         };
 
         const result = await OracleCore.retrieveContext(
+            projectId,
             userUuid,
             query,
             affect || defaultAffect

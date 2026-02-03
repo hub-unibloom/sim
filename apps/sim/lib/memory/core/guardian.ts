@@ -1,5 +1,6 @@
-import { qdrant } from '../db/qdrant';
+import { qdrant, VectorOps } from '../db/qdrant';
 import { sql } from '../db/postgres';
+import { ActionDispatcher } from '../services/action-dispatch';
 import { createLogger } from '@sim/logger';
 
 const logger = createLogger('CheshireGuardian');
@@ -18,13 +19,15 @@ interface ContextMetadata {
 export class GuardianCore {
 
     public static async arbitrateReality(
+        projectId: string,
         userUuid: string,
         newVector: number[],
         newContent: string,
         newContext: ContextMetadata
     ): Promise<TruthVerdict> {
 
-        const similarMemories = await qdrant.search(`cheshire_${userUuid}`, {
+        // Use VectorOps for cleaner, project-isolated search
+        const similarMemories = await VectorOps.search(projectId, userUuid, {
             vector: newVector,
             limit: 1,
             score_threshold: 0.82,
@@ -48,10 +51,20 @@ export class GuardianCore {
 
         const effectiveConflict = rawConflict * contextCoherence;
 
-        logger.info(`🛡️ GUARDIAN :: ARBITRATION`, { sim: semanticSimilarity.toFixed(2), ctx: contextCoherence.toFixed(2), effectiveConflict: effectiveConflict.toFixed(2) });
+        logger.info(`🛡️ GUARDIAN :: ARBITRATION`, { projectId, sim: semanticSimilarity.toFixed(2), ctx: contextCoherence.toFixed(2), effectiveConflict: effectiveConflict.toFixed(2) });
+
+        // Check for Action Triggers (Phase 4 Integration)
+        try {
+            // We only dispatch actions for significant new content
+            if (newContent.length > 5) {
+                await ActionDispatcher.detectAndDispatch(projectId, userUuid, newContent);
+            }
+        } catch (e) {
+            logger.warn(`🛡️ GUARDIAN :: Action Dispatch failed silently`, { error: e });
+        }
 
         if (effectiveConflict > 0.4) {
-            await this.scarMemory(userUuid, existingMemory.id as string);
+            await this.scarMemory(projectId, userUuid, existingMemory.id as string);
             return { action: 'SCAR_OLD', confidenceDelta: effectiveConflict };
         }
         else if (rawConflict > 0.4 && contextCoherence < 0.5) {
@@ -72,6 +85,7 @@ export class GuardianCore {
         const newG = normalize(newCtx.group_id);
         const oldG = normalize(oldCtx.group_id);
 
+        // Group context now implies Project Context implicitly, but we treat group explicitly for chat rooms
         const resolvedNewG = isPresent(newG) ? newG : 'PRIVATE_DEFAULT';
         const resolvedOldG = isPresent(oldG) ? oldG : 'PRIVATE_DEFAULT';
 
@@ -112,23 +126,24 @@ export class GuardianCore {
         return totalWeight > 0 ? score / totalWeight : 1.0;
     }
 
-    private static async scarMemory(userUuid: string, memoryId: string) {
+    private static async scarMemory(projectId: string, userUuid: string, memoryId: string) {
+        // Enforce project isolation in SQL
         await sql`
-      UPDATE memories 
-      SET is_scar = TRUE, entropy = 1.0 
-      WHERE id = ${memoryId}
-    `;
+            UPDATE memories 
+            SET is_scar = TRUE, entropy = 1.0 
+            WHERE id = ${memoryId} AND project_id = ${projectId}
+        `;
 
         try {
-            await qdrant.setPayload(`cheshire_${userUuid}`, {
-                payload: { type: 'SCAR' },
-                points: [memoryId]
-            });
+            await VectorOps.updatePayload(projectId, userUuid, [{
+                id: memoryId,
+                payload: { type: 'SCAR' }
+            }]);
         } catch (error) {
             logger.warn(`🛡️ GUARDIAN :: QDRANT_SYNC_WARNING [${memoryId}] - Payload update failed, but SQL is consistent.`, { error });
         }
 
-        logger.info(`🛡️ GUARDIAN :: SCAR_CREATED`, { memoryId });
+        logger.info(`🛡️ GUARDIAN :: SCAR_CREATED`, { projectId, memoryId });
     }
 
     private static calculateBayesianConflict(similarity: number): number {

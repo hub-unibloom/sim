@@ -1,78 +1,56 @@
-# Guia de Instalação e Deploy - Sim + Cheshire
+# Guia de Instalação e Deploy - Sim + Cheshire (Embedded)
 
-Este guia descreve de forma prática como colocar o sistema no ar (deploy) e como tirá-lo do ar, utilizando Docker Compose.
+Este guia descreve como configurar o sistema de memória Cheshire, agora totalmente integrado (embedded) no Sim Studio.
+
+---
+
+## Arquitetura
+
+O Cheshire agora roda como um módulo interno do Sim, conectando-se diretamente aos recursos:
+
+1.  **PostgreSQL**: O mesmo banco da aplicação Sim (tabelas particionadas/separadas).
+2.  **Qdrant**: Banco vetorial para embeddings.
+3.  **Redis**: Cache rápido.
+
+Não há mais necessidade de uma VPS separada rodando "Cascata". O Cheshire é local.
+
+---
 
 ## Pré-requisitos
 
-*   **Docker** e **Docker Compose** instalados no servidor (VPS).
-*   Acesso ao terminal do servidor via SSH.
-*   As variáveis de ambiente configuradas corretamente (ver abaixo).
+*   **Docker** e **Docker Compose** v2+ instalados.
+*   Acesso SSH ao servidor.
+*   **PostgreSQL, Redis e Qdrant** (seja via Docker Compose ou serviços gerenciados).
 
 ---
 
-## 1. Configuração Inicial
+## 2. Configurar Variáveis de Ambiente
 
-Antes de subir o sistema, você precisa configurar as variáveis de ambiente.
-
-1.  Na raiz do projeto, crie ou edite o arquivo `.env.prod`:
-    ```bash
-    cp .env.example .env.prod
-    nano .env.prod
-    ```
-
-2.  **Variáveis Críticas** (Certifique-se de que estas estão apontando para seus serviços externos):
-    *   `DATABASE_URL`: URL da sua instância Postgres.
-    *   `QDRANT_URL` & `QDRANT_API_KEY`: URL e chave do seu Qdrant.
-    *   `REDIS_URL`: URL da sua instância Redis/Dragonfly.
-    *   `OPENAI_API_KEY` (ou `AI_BASE_URL`): Chaves para a IA.
-    *   `BETTER_AUTH_SECRET`: Chave secreta para autenticação.
-
----
-
-## 2. Colocar no Ar (Deploy) 🚀
-
-Para iniciar o sistema em modo de produção (com rebuild automático caso haja mudanças no código):
+No arquivo `.env` do Sim:
 
 ```bash
-# Executar na raiz do projeto
-docker-compose -f docker-compose.prod.yml up --build -d
-```
+# ... variáveis padrão do Sim ...
 
-*   `-f docker-compose.prod.yml`: Seleciona o arquivo de configuração de produção.
-*   `--build`: Força a reconstrução das imagens (garante que o código novo seja usado).
-*   `-d`: Roda em segundo plano (detached mode).
+# === CHESHIRE MEMORY SYSTEM ===
+# Usa a mesma conexão do Sim, ou uma string separada se preferir
+CASCATA_POSTGRES_URL="${DATABASE_URL}" 
 
-### Verificando se está rodando
-Para ver os logs e garantir que tudo subiu corretamente:
+# Configuração do Qdrant (Pode ser local ou cloud)
+CASCATA_QDRANT_URL="http://qdrant:6333" 
+CASCATA_QDRANT_API_KEY="" 
 
-```bash
-docker-compose -f docker-compose.prod.yml logs -f
+# Redis
+CASCATA_REDIS_URL="${REDIS_URL}" 
 ```
 
 ---
 
-## 3. Tirar do Ar (Parar) 🛑
-
-Para parar o sistema e remover os containers (liberando recursos):
+## 3. Deploy
 
 ```bash
-docker-compose -f docker-compose.prod.yml down
+docker compose -f docker-compose.prod.yml up --build -d
 ```
 
-Se quiser parar, mas **manter** os dados persistentes (volumes), use apenas o comando acima.
-Se quiser apagar **tudo** (incluindo volumes locais, se houver):
+### Migrações
 
-```bash
-docker-compose -f docker-compose.prod.yml down -v
-```
-
----
-
-## Resumo dos Comandos
-
-| Ação | Comando |
-| :--- | :--- |
-| **Subir** | `docker-compose -f docker-compose.prod.yml up --build -d` |
-| **Ver Logs** | `docker-compose -f docker-compose.prod.yml logs -f` |
-| **Parar** | `docker-compose -f docker-compose.prod.yml down` |
-| **Reiniciar** | `docker-compose -f docker-compose.prod.yml restart` |
+Certifique-se de aplicar as migrações SQL necessárias localizadas em `apps/sim/migrations/` para criar as tabelas `projects`, `memories`, etc.

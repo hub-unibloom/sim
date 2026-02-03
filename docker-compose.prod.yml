@@ -23,6 +23,15 @@ services:
       - OLLAMA_URL=${OLLAMA_URL:-http://localhost:11434}
       - SOCKET_SERVER_URL=${SOCKET_SERVER_URL:-http://realtime:3002}
       - NEXT_PUBLIC_SOCKET_URL=${NEXT_PUBLIC_SOCKET_URL:-http://localhost:3002}
+      # Cheshire Memory System (Cascata Integration)
+      - CASCATA_POSTGRES_URL=${CASCATA_POSTGRES_URL:-}
+      - CASCATA_QDRANT_URL=${CASCATA_QDRANT_URL:-}
+      - CASCATA_QDRANT_API_KEY=${CASCATA_QDRANT_API_KEY:-}
+      - CASCATA_REDIS_URL=${CASCATA_REDIS_URL:-}
+      - CHESHIRE_EMBEDDING_MODEL=${CHESHIRE_EMBEDDING_MODEL:-text-embedding-3-small}
+      - CHESHIRE_EMBEDDING_DIM=${CHESHIRE_EMBEDDING_DIM:-1536}
+      - CHESHIRE_LLM_MODEL=${CHESHIRE_LLM_MODEL:-gpt-4-turbo}
+      - N8N_WEBHOOK_URL=${N8N_WEBHOOK_URL:-}
     depends_on:
       db:
         condition: service_healthy

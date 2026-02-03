@@ -30,13 +30,14 @@ class VectorMemory {
 
     /**
      * Initializes collections if they don't exist (Bootstrapping).
-     * Creates a user-specific collection for holographic memory storage.
+     * Creates a project-specific collection for holographic memory storage.
      * 
-     * @param userSlug - User identifier for collection naming
+     * @param projectId - Project identifier
+     * @param userUuid - User identifier
      */
-    public static async ensureCollections(userSlug: string): Promise<void> {
+    public static async ensureProjectCollection(projectId: string, userUuid: string): Promise<void> {
         const client = VectorMemory.getInstance();
-        const collectionName = `cheshire_${userSlug}`;
+        const collectionName = `cheshire_${projectId}_${userUuid}`;
         const embeddingDim = env.CHESHIRE_EMBEDDING_DIM || 1536;
 
         try {
@@ -69,14 +70,81 @@ class VectorMemory {
     /**
      * Get collection info for health checks
      */
-    public static async getCollectionInfo(userSlug: string) {
+    public static async getCollectionInfo(projectId: string, userUuid: string) {
         const client = VectorMemory.getInstance();
-        const collectionName = `cheshire_${userSlug}`;
+        const collectionName = `cheshire_${projectId}_${userUuid}`;
 
         try {
             return await client.getCollection(collectionName);
         } catch {
             return null;
+        }
+    }
+
+    /**
+     * Search for similar vectors in a project context
+     */
+    public static async search(
+        projectId: string,
+        userUuid: string,
+        params: { vector: number[], limit: number, with_payload?: boolean, score_threshold?: number }
+    ) {
+        const client = VectorMemory.getInstance();
+        const collectionName = `cheshire_${projectId}_${userUuid}`;
+
+        try {
+            return await client.search(collectionName, params);
+        } catch (error) {
+            // If collection doesn't exist, try to create it and retry search
+            // This is a self-healing mechanism
+            logger.warn(`🧠 CHESHIRE :: Collection [${collectionName}] not found during search, attempting to create...`);
+            await this.ensureProjectCollection(projectId, userUuid);
+            return await client.search(collectionName, params);
+        }
+    }
+
+    /**
+     * Upsert points into a project collection
+     */
+    public static async upsert(projectId: string, userUuid: string, points: { id: string | number, vector: number[], payload?: any }[]) {
+        const collectionName = `cheshire_${projectId}_${userUuid}`;
+        await VectorOps.ensureProjectCollection(projectId, userUuid);
+
+        await qdrant.upsert(collectionName, {
+            wait: true,
+            points: points.map(p => ({
+                id: p.id,
+                vector: p.vector,
+                payload: p.payload
+            }))
+        });
+    }
+
+    /**
+     * Dedicated method for updating ONLY payload without re-sending vector.
+     * Use this for 'scarring' or metadata updates.
+     */
+    public static async updatePayload(projectId: string, userUuid: string, points: { id: string | number, payload: any }[]) {
+        const collectionName = `cheshire_${projectId}_${userUuid}`;
+        // Set payload for multiple points
+        for (const p of points) {
+            await qdrant.setPayload(collectionName, {
+                wait: true,
+                payload: p.payload,
+                points: [p.id],
+            });
+        }
+    }
+
+    public static async delete(projectId: string, userUuid: string, ids: (string | number)[]) {
+        const collectionName = `cheshire_${projectId}_${userUuid}`;
+        try {
+            await qdrant.delete(collectionName, {
+                wait: true,
+                points: ids
+            });
+        } catch (error) {
+            // Ignore if collection doesn't exist
         }
     }
 }

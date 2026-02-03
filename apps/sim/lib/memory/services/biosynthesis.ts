@@ -28,7 +28,7 @@ export class BioSynthesisService {
     return BioSynthesisService.ai;
   }
 
-  public static async synthesizePersona(userUuid: string): Promise<void> {
+  public static async synthesizePersona(projectId: string, userUuid: string): Promise<void> {
     const userResult = await sql`
           SELECT 
             plano, 
@@ -36,16 +36,16 @@ export class BioSynthesisService {
             preferences->>'accumulated_entropy' as entropy_acc,
             preferences->>'last_synthesis_checkpoint' as checkpoint,
             interaction_rhythm_ms,
-            (SELECT count(*) FROM memories WHERE user_uuid = ${userUuid}) as msg_count
-          FROM users 
+            (SELECT count(*) FROM memories WHERE user_uuid = ${userUuid} AND project_id = ${projectId}) as msg_count
+          FROM cheshire_users 
           WHERE uuid = ${userUuid}
         `;
 
     if (userResult.length === 0) return;
     const user = userResult[0];
 
-    // TODO: Adapt 'plano' check to Sim's subscription model if needed
-    if (user.plano !== 'premium') return;
+    // TODO: Adapt 'plano' check
+    // if (user.plano !== 'premium') return;
     if (parseInt(user.msg_count) < 20) return;
 
     const currentEntropy = parseFloat(user.entropy_acc || '0');
@@ -53,7 +53,7 @@ export class BioSynthesisService {
       return;
     }
 
-    logger.info(`🧬 BIOSYNTHESIS :: ACTIVATED`, { userUuid, entropy: currentEntropy });
+    logger.info(`🧬 BIOSYNTHESIS :: ACTIVATED`, { projectId, userUuid, entropy: currentEntropy });
 
     const checkpointDate = user.checkpoint ? new Date(user.checkpoint) : new Date(0);
 
@@ -61,6 +61,7 @@ export class BioSynthesisService {
           SELECT id, semantic_text, timestamp, type, entropy
           FROM memories 
           WHERE user_uuid = ${userUuid} 
+          AND project_id = ${projectId}
           AND timestamp > ${checkpointDate}
           ORDER BY timestamp ASC 
           LIMIT 50

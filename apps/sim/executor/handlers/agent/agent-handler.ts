@@ -813,52 +813,59 @@ export class AgentBlockHandler implements BlockHandler {
       if (lastUserMsg && typeof lastUserMsg.content === 'string') {
         const userId = ctx.userId; // Provided by execution context
 
-        // Placeholder affect - in a real scenario we'd fetch the user's current affect state
-        const currentAffect: AffectiveVector = {
-          joy: 0.5, trust: 0.5, fear: 0, surprise: 0, sadness: 0,
-          disgust: 0, anger: 0, anticipation: 0.5, arousal: 0.5
-        };
+        // Skip memory injection if no userId available
+        if (!userId) {
+          logger.debug('Cheshire memory injection skipped: no userId in context');
+        } else {
+          // Fetch the user's current affective state from Cheshire
+          // Using workspaceId as the projectId context
+          const projectId = ctx.workspaceId;
 
-        const context = await OracleCore.retrieveContext(userId, lastUserMsg.content, currentAffect);
+          if (!projectId) {
+            logger.warn('Cheshire memory injection skipped: no workspaceId/projectId in context');
+          } else {
+            const currentAffect = await OracleCore.getUserAffectState(projectId, userId);
+            const context = await OracleCore.retrieveContext(projectId, userId, lastUserMsg.content, currentAffect);
 
-        let memoryBlock = `\n\n### 🧠 MEMORY & CONTEXT (Cheshire System)\n`;
+            let memoryBlock = `\n\n### 🧠 MEMORY & CONTEXT (Cheshire System)\n`;
 
-        // A. Identity / Persona
-        if (context.persona_instruction) {
-          memoryBlock += `[PERSONA_OVERRIDE]: ${context.persona_instruction}\n`;
+            // A. Identity / Persona
+            if (context.persona_instruction) {
+              memoryBlock += `[PERSONA_OVERRIDE]: ${context.persona_instruction}\n`;
+            }
+
+            // B. Relevant Memories
+            if (context.context_fragments.length > 0) {
+              memoryBlock += `\n[RECALLED_MEMORIES]:\n`;
+              context.context_fragments.forEach(frag => {
+                memoryBlock += `- (${frag.type}) ${frag.content} (Confidence: ${(frag.score * 100).toFixed(0)}%)\n`;
+              });
+            }
+
+            // C. Active Triggers
+            if (context.active_triggers.length > 0) {
+              memoryBlock += `\n[PENDING_ACTIONS/TRIGGERS]:\n`;
+              context.active_triggers.forEach(trig => {
+                memoryBlock += `! [ACTION] ${trig.description}\n`;
+              });
+            }
+
+            memoryBlock += `\n[INSTRUCTION]: Use the above memory to inform your response. Do not explicitly mention "I remember" unless relevant. Be natural.\n`;
+
+            // Inject as a high-priority System Message
+            messages.push({
+              role: 'system',
+              content: memoryBlock
+            });
+          }
         }
-
-        // B. Relevant Memories
-        if (context.context_fragments.length > 0) {
-          memoryBlock += `\n[RECALLED_MEMORIES]:\n`;
-          context.context_fragments.forEach(frag => {
-            memoryBlock += `- (${frag.type}) ${frag.content} (Confidence: ${(frag.score * 100).toFixed(0)}%)\n`;
-          });
-        }
-
-        // C. Active Triggers
-        if (context.active_triggers.length > 0) {
-          memoryBlock += `\n[PENDING_ACTIONS/TRIGGERS]:\n`;
-          context.active_triggers.forEach(trig => {
-            memoryBlock += `! [ACTION] ${trig.description}\n`;
-          });
-        }
-
-        memoryBlock += `\n[INSTRUCTION]: Use the above memory to inform your response. Do not explicitly mention "I remember" unless relevant. Be natural.\n`;
-
-        // Inject as a high-priority System Message
-        messages.push({
-          role: 'system',
-          content: memoryBlock
-        });
+      } catch (err) {
+        logger.warn("Cheshire Memory Injection Failed", { error: err });
+        // Fail open - do not block agent execution if memory fails
       }
-    } catch (err) {
-      logger.warn("Cheshire Memory Injection Failed", { error: err });
-      // Fail open - do not block agent execution if memory fails
-    }
 
-    return messages.length > 0 ? messages : undefined
-  }
+      return messages.length > 0 ? messages : undefined
+    }
 
   private extractValidMessages(messages?: Message[]): Message[] {
     if (!messages || !Array.isArray(messages)) return []

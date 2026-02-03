@@ -5,6 +5,7 @@ import * as DialogPrimitive from '@radix-ui/react-dialog'
 import * as VisuallyHidden from '@radix-ui/react-visually-hidden'
 import { useQueryClient } from '@tanstack/react-query'
 import {
+  Brain,
   Bug,
   Files,
   KeySquare,
@@ -58,6 +59,7 @@ import {
   TeamManagement,
   WorkflowMcpServers,
 } from '@/app/workspace/[workspaceId]/w/components/sidebar/components/settings-modal/components'
+import { CheshireBrain } from '@/app/workspace/[workspaceId]/w/components/sidebar/components/settings-modal/components/cheshire-brain/cheshire-brain'
 import { TemplateProfile } from '@/app/workspace/[workspaceId]/w/components/sidebar/components/settings-modal/components/template-profile/template-profile'
 import { generalSettingsKeys, useGeneralSettings } from '@/hooks/queries/general-settings'
 import { organizationKeys, useOrganizations } from '@/hooks/queries/organization'
@@ -80,6 +82,7 @@ type SettingsSection =
   | 'general'
   | 'environment'
   | 'template-profile'
+  | 'cheshire-brain'
   | 'integrations'
   | 'credential-sets'
   | 'access-control'
@@ -128,6 +131,7 @@ const sectionConfig: { key: NavigationSection; title: string }[] = [
 const allNavigationItems: NavigationItem[] = [
   { id: 'general', label: 'General', icon: Settings, section: 'account' },
   { id: 'template-profile', label: 'Template Profile', icon: User, section: 'account' },
+  { id: 'cheshire-brain', label: 'Cheshire Brain', icon: Brain, section: 'account' },
   {
     id: 'access-control',
     label: 'Access Control',
@@ -548,6 +552,7 @@ export function SettingsModal({ open, onOpenChange }: SettingsModalProps) {
               />
             )}
             {activeSection === 'template-profile' && <TemplateProfile />}
+            {activeSection === 'cheshire-brain' && <CheshireBrain />}
             {activeSection === 'integrations' && (
               <Integrations
                 onOpenChange={onOpenChange}
