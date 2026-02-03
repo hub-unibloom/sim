@@ -9,7 +9,7 @@ import {
     BioSynthesisService,
     sql,
     qdrant,
-    redis,
+    getRedis,
     AffectiveVector
 } from '../../../../lib/memory';
 
@@ -56,7 +56,7 @@ export async function POST(req: NextRequest) {
         if (!check.accepted) {
             return NextResponse.json({ status: 'IGNORED', reason: check.reason, hash: check.hash }, { status: 200 });
         }
-        const originPacketId = check.packetId;
+        const originPacketId = check.packetId ?? crypto.randomUUID();
 
         try {
             // 2. EMBEDDING: Generate Vectors
@@ -80,7 +80,12 @@ export async function POST(req: NextRequest) {
             // 5. TRANSACTIONAL CORE
             let memoryId: string = '';
 
-            await sql.begin(async (tx) => {
+            // Note: postgres.js TransactionSql is callable (supports template literals)
+            // but TypeScript types may not recognize this, so we use type assertion
+            await sql.begin(async (tx: ReturnType<typeof sql.begin> extends Promise<infer R> ? R : typeof sql) => {
+                // Cast tx to sql-compatible callable type  
+                const txSql = tx as unknown as typeof sql;
+
                 // 4.5 UPSERT USER IDENTITY
                 const explicitLastInteraction = packet.metadata.user.last_interation
                     ? new Date(packet.metadata.user.last_interation)
@@ -98,7 +103,7 @@ export async function POST(req: NextRequest) {
                 // Schema has: uuid, username, interaction_rhythm_ms, last_interaction, emotional_homeostasis, preferences.
                 // Assuming 'plano' is in schema too (added in step 103 check).
 
-                await tx`
+                await txSql`
           INSERT INTO users (uuid, username, last_interaction, emotional_homeostasis)
           VALUES (
             ${packet.metadata.user.uuid}, 
@@ -120,7 +125,7 @@ export async function POST(req: NextRequest) {
         `;
 
                 // 5. CASCATA: Persist Memory
-                const memoryResult = await tx`
+                const memoryResult = await txSql`
           INSERT INTO memories (
             user_uuid, semantic_text, raw_content, 
             embedding_dense, embedding_compact, 
@@ -168,7 +173,7 @@ export async function POST(req: NextRequest) {
                         // Since logic is dynamic, we do a loop or batch insert logic.
                         // Note: `sql` helper for batch insert might work if properly typed, otherwise loop.
                         for (const nid of nodeIds) {
-                            await tx`
+                            await txSql`
                     INSERT INTO memories_nodes (memory_id, node_id) VALUES (${memoryId}, ${nid})
                     ON CONFLICT DO NOTHING
                  `;

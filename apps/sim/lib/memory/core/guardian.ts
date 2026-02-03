@@ -1,5 +1,8 @@
-import { qdrant } from '../../db/qdrant';
-import { sql } from '../../db/postgres';
+import { qdrant } from '../db/qdrant';
+import { sql } from '../db/postgres';
+import { createLogger } from '@sim/logger';
+
+const logger = createLogger('CheshireGuardian');
 
 interface TruthVerdict {
     action: 'UPDATE_EXISTING' | 'CREATE_NEW' | 'SCAR_OLD' | 'COEXIST_POLY_TRUTH';
@@ -45,7 +48,7 @@ export class GuardianCore {
 
         const effectiveConflict = rawConflict * contextCoherence;
 
-        console.log(`🛡️ GUARDIAN :: ARBITRATION [Sim:${semanticSimilarity.toFixed(2)} | Ctx:${contextCoherence.toFixed(2)} | EffConflict:${effectiveConflict.toFixed(2)}]`);
+        logger.info(`🛡️ GUARDIAN :: ARBITRATION`, { sim: semanticSimilarity.toFixed(2), ctx: contextCoherence.toFixed(2), effectiveConflict: effectiveConflict.toFixed(2) });
 
         if (effectiveConflict > 0.4) {
             await this.scarMemory(userUuid, existingMemory.id as string);
@@ -122,10 +125,10 @@ export class GuardianCore {
                 points: [memoryId]
             });
         } catch (error) {
-            console.warn(`🛡️ GUARDIAN :: QDRANT_SYNC_WARNING [${memoryId}] - Payload update failed, but SQL is consistent.`, error);
+            logger.warn(`🛡️ GUARDIAN :: QDRANT_SYNC_WARNING [${memoryId}] - Payload update failed, but SQL is consistent.`, { error });
         }
 
-        console.log(`🛡️ GUARDIAN :: SCAR_CREATED [${memoryId}]`);
+        logger.info(`🛡️ GUARDIAN :: SCAR_CREATED`, { memoryId });
     }
 
     private static calculateBayesianConflict(similarity: number): number {

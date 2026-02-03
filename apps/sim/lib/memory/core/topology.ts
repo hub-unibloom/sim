@@ -1,10 +1,13 @@
 import { CognitiveNode, SynapticEdge } from '../types';
 import { sql } from '../db/postgres';
+import { createLogger } from '@sim/logger';
+
+const logger = createLogger('CheshireCortex');
 
 export class GraphTopology {
 
-    public static async pruneOrphans() {
-        console.log("🧹 CORTEX :: RUNNING_SYNAPTIC_MAINTENANCE...");
+    public static async pruneOrphans(): Promise<void> {
+        logger.info('🧹 CORTEX :: RUNNING_SYNAPTIC_MAINTENANCE');
 
         await sql`
       UPDATE graph_edges 
@@ -20,9 +23,9 @@ export class GraphTopology {
     `;
 
         if (deletedEdges.length > 0) {
-            console.log(`🧹 CORTEX :: MAINTENANCE_REPORT => Pruned ${deletedEdges.length} noise synapses. ZERO nodes deleted.`);
+            logger.info(`🧹 CORTEX :: MAINTENANCE_REPORT`, { prunedSynapses: deletedEdges.length });
         } else {
-            console.log("✨ CORTEX :: MAINTENANCE_REPORT => System Clean. Eternal Memory Integrity Preserved.");
+            logger.debug('✨ CORTEX :: MAINTENANCE_REPORT => System Clean');
         }
     }
 

@@ -1,5 +1,15 @@
+/**
+ * CHESHIRE MEMORY SYSTEM - Silence Analyzer (Kairos)
+ * 
+ * Proactive user engagement system that detects silence patterns
+ * and triggers n8n webhooks for re-engagement.
+ */
+
 import { sql } from '../db/postgres';
-import { env } from '../config/env';
+import { env } from '@/lib/core/config/env';
+import { createLogger } from '@sim/logger';
+
+const logger = createLogger('CheshireKairos');
 
 interface AttentionBid {
     priority: number;
@@ -9,8 +19,9 @@ interface AttentionBid {
 
 export class SilenceAnalyzer {
 
-    public static async scanForSilence() {
+    public static async scanForSilence(): Promise<void> {
         if (!env.N8N_WEBHOOK_URL) {
+            logger.debug('📣 KAIROS :: N8N_WEBHOOK_URL not configured, skipping silence scan');
             return;
         }
 
@@ -60,8 +71,8 @@ export class SilenceAnalyzer {
         });
     }
 
-    private static async executeProactiveContact(userUuid: string, bid: AttentionBid, hoursSilent: number) {
-        console.log(`📣 KAIROS :: WINNING_BID [${userUuid}] -> ${bid.strategy}`);
+    private static async executeProactiveContact(userUuid: string, bid: AttentionBid, hoursSilent: number): Promise<void> {
+        logger.info(`📣 KAIROS :: WINNING_BID`, { userUuid, strategy: bid.strategy, priority: bid.priority });
 
         await sql`
       UPDATE users 
@@ -72,8 +83,9 @@ export class SilenceAnalyzer {
         try {
             await sql`
             INSERT INTO memories (
-                user_uuid, semantic_text, type, timestamp, raw_content, entropy
+                id, user_uuid, semantic_text, type, timestamp, raw_content, entropy
             ) VALUES (
+                ${crypto.randomUUID()},
                 ${userUuid}, 
                 ${`KAIROS_TRIGGER: System initiated ${bid.strategy} protocol due to ${Math.floor(hoursSilent)}h silence.`},
                 'SEMANTIC',
@@ -89,7 +101,7 @@ export class SilenceAnalyzer {
             )
         `;
         } catch (err) {
-            console.error("KAIROS :: MEMORY_INSERT_FAILED", err);
+            logger.error('KAIROS :: MEMORY_INSERT_FAILED', { error: err });
         }
 
         try {
@@ -109,7 +121,7 @@ export class SilenceAnalyzer {
                 })
             });
         } catch (error) {
-            console.error("KAIROS :: WEBHOOK_FAILED", error);
+            logger.error('KAIROS :: WEBHOOK_FAILED', { error });
         }
     }
 }

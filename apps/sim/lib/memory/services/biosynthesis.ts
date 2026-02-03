@@ -1,68 +1,85 @@
+/**
+ * CHESHIRE MEMORY SYSTEM - BioSynthesis Service
+ * 
+ * Autonomous persona synthesis system that:
+ * - Tracks accumulated entropy from interactions
+ * - Generates evolving user biographies via LLM
+ * - Updates psychological profiles periodically
+ */
 
 import { sql } from '../db/postgres';
 import OpenAI from 'openai';
-import { env } from '../config/env';
+import { env } from '@/lib/core/config/env';
+import { createLogger } from '@sim/logger';
+
+const logger = createLogger('CheshireBioSynthesis');
 
 const METABOLIC_THRESHOLD = 5.0;
 
 export class BioSynthesisService {
-    private static ai = new OpenAI({
+  private static ai: OpenAI | null = null;
+
+  private static getAI(): OpenAI {
+    if (!BioSynthesisService.ai) {
+      BioSynthesisService.ai = new OpenAI({
         apiKey: env.OPENAI_API_KEY,
-        baseURL: env.AI_BASE_URL
-    });
+      });
+    }
+    return BioSynthesisService.ai;
+  }
 
-    public static async synthesizePersona(userUuid: string) {
-        const userResult = await sql`
-      SELECT 
-        plano, 
-        username,
-        preferences->>'accumulated_entropy' as entropy_acc,
-        preferences->>'last_synthesis_checkpoint' as checkpoint,
-        interaction_rhythm_ms,
-        (SELECT count(*) FROM memories WHERE user_uuid = ${userUuid}) as msg_count
-      FROM users 
-      WHERE uuid = ${userUuid}
-    `;
+  public static async synthesizePersona(userUuid: string): Promise<void> {
+    const userResult = await sql`
+          SELECT 
+            plano, 
+            username,
+            preferences->>'accumulated_entropy' as entropy_acc,
+            preferences->>'last_synthesis_checkpoint' as checkpoint,
+            interaction_rhythm_ms,
+            (SELECT count(*) FROM memories WHERE user_uuid = ${userUuid}) as msg_count
+          FROM users 
+          WHERE uuid = ${userUuid}
+        `;
 
-        if (userResult.length === 0) return;
-        const user = userResult[0];
+    if (userResult.length === 0) return;
+    const user = userResult[0];
 
-        // TODO: Adapt 'plano' check to sim's subscription model if needed
-        if (user.plano !== 'premium') return;
-        if (parseInt(user.msg_count) < 20) return;
+    // TODO: Adapt 'plano' check to Sim's subscription model if needed
+    if (user.plano !== 'premium') return;
+    if (parseInt(user.msg_count) < 20) return;
 
-        const currentEntropy = parseFloat(user.entropy_acc || '0');
-        if (currentEntropy < METABOLIC_THRESHOLD) {
-            return;
-        }
+    const currentEntropy = parseFloat(user.entropy_acc || '0');
+    if (currentEntropy < METABOLIC_THRESHOLD) {
+      return;
+    }
 
-        console.log(`🧬 BIOSYNTHESIS :: ACTIVATED [${userUuid}]`);
+    logger.info(`🧬 BIOSYNTHESIS :: ACTIVATED`, { userUuid, entropy: currentEntropy });
 
-        const checkpointDate = user.checkpoint ? new Date(user.checkpoint) : new Date(0);
+    const checkpointDate = user.checkpoint ? new Date(user.checkpoint) : new Date(0);
 
-        const memories = await sql`
-      SELECT id, semantic_text, timestamp, type, entropy
-      FROM memories 
-      WHERE user_uuid = ${userUuid} 
-      AND timestamp > ${checkpointDate}
-      ORDER BY timestamp ASC 
-      LIMIT 50
-    `;
+    const memories = await sql`
+          SELECT id, semantic_text, timestamp, type, entropy
+          FROM memories 
+          WHERE user_uuid = ${userUuid} 
+          AND timestamp > ${checkpointDate}
+          ORDER BY timestamp ASC 
+          LIMIT 50
+        `;
 
-        if (memories.length === 0) return;
+    if (memories.length === 0) return;
 
-        const rhythmMinutes = (user.interaction_rhythm_ms || 0) / (1000 * 60);
-        let rhythmDescription = "Indefinido";
-        if (rhythmMinutes < 1) rhythmDescription = "Frenético (Instantâneo)";
-        else if (rhythmMinutes < 10) rhythmDescription = "Ágil (Conversa Fluida)";
-        else if (rhythmMinutes < 60) rhythmDescription = "Pausado (Reflexivo)";
-        else rhythmDescription = "Esporádico (Assíncrono)";
+    const rhythmMinutes = (user.interaction_rhythm_ms || 0) / (1000 * 60);
+    let rhythmDescription = 'Indefinido';
+    if (rhythmMinutes < 1) rhythmDescription = 'Frenético (Instantâneo)';
+    else if (rhythmMinutes < 10) rhythmDescription = 'Ágil (Conversa Fluida)';
+    else if (rhythmMinutes < 60) rhythmDescription = 'Pausado (Reflexivo)';
+    else rhythmDescription = 'Esporádico (Assíncrono)';
 
-        const narrativeStream = memories.map(m =>
-            `[${new Date(m.timestamp).toISOString()}] (${m.type}) ${m.semantic_text}`
-        ).join('\n');
+    const narrativeStream = memories.map((m: any) =>
+      `[${new Date(m.timestamp).toISOString()}] (${m.type}) ${m.semantic_text}`
+    ).join('\n');
 
-        const prompt = `
+    const prompt = `
       ATUAR COMO: Biógrafo Cognitivo Sênior.
       ALVO: ${user.username || 'Usuário'}.
       
@@ -80,34 +97,35 @@ export class BioSynthesisService {
       ${narrativeStream}
     `;
 
-        try {
-            const completion = await this.ai.chat.completions.create({
-                model: env.LLM_MODEL,
-                messages: [{ role: "system", content: prompt }],
-                temperature: 0.3,
-                max_tokens: 800
-            });
+    try {
+      const model = env.CHESHIRE_LLM_MODEL || 'gpt-4-turbo';
+      const completion = await this.getAI().chat.completions.create({
+        model,
+        messages: [{ role: 'system', content: prompt }],
+        temperature: 0.3,
+        max_tokens: 800,
+      });
 
-            const bio = completion.choices[0].message.content;
-            const newCheckpoint = memories[memories.length - 1].timestamp;
+      const bio = completion.choices[0].message.content;
+      const newCheckpoint = memories[memories.length - 1].timestamp;
 
-            await sql`
-        UPDATE users 
-        SET 
-          preferences = jsonb_set(
-            jsonb_set(
-                jsonb_set(preferences, '{auto_biography}', ${JSON.stringify(bio)}),
-                '{accumulated_entropy}', '0'
-            ),
-            '{last_synthesis_checkpoint}', ${JSON.stringify(newCheckpoint)}
-          )
-        WHERE uuid = ${userUuid}
-      `;
+      await sql`
+                UPDATE users 
+                SET 
+                  preferences = jsonb_set(
+                    jsonb_set(
+                        jsonb_set(preferences, '{auto_biography}', ${JSON.stringify(bio)}),
+                        '{accumulated_entropy}', '0'
+                    ),
+                    '{last_synthesis_checkpoint}', ${JSON.stringify(newCheckpoint)}
+                  )
+                WHERE uuid = ${userUuid}
+            `;
 
-            console.log(`🦋 BIOSYNTHESIS :: EVOLUTION_COMPLETE [${userUuid}]`);
+      logger.info(`🦋 BIOSYNTHESIS :: EVOLUTION_COMPLETE`, { userUuid });
 
-        } catch (error) {
-            console.error("BIOSYNTHESIS :: FAIL", error);
-        }
+    } catch (error) {
+      logger.error('BIOSYNTHESIS :: FAIL', { userUuid, error });
     }
+  }
 }

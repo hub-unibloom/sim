@@ -1,3 +1,9 @@
+/**
+ * CHESHIRE MEMORY SYSTEM
+ * 
+ * Central export for all Cheshire memory components.
+ * Provides unified access to core systems, services, and DB clients.
+ */
 
 // Core Systems
 export * from './core/ontology';
@@ -14,9 +20,9 @@ export * from './services/embedding';
 export * from './services/affective-engine';
 
 // DB Clients
-export * from './db/qdrant';
-export * from './db/postgres';
-export * from './db/redis';
+export { qdrant, VectorOps } from './db/qdrant';
+export { sql, CascataDatabase } from './db/postgres';
+export { getRedis, CascataCache } from './db/redis';
 
 // Oracles
 export * from './oracle';

@@ -1,9 +1,11 @@
-
 import { qdrant } from './db/qdrant';
 import { sql } from './db/postgres';
 import { EmbeddingService } from './services/embedding';
 import { DecayEngine } from './services/decay';
 import { AffectiveVector } from './types';
+import { createLogger } from '@sim/logger';
+
+const logger = createLogger('CheshireOracle');
 
 export class OracleCore {
 
@@ -26,7 +28,7 @@ export class OracleCore {
         });
 
         const contextPoints: any[] = [];
-        const memoryIds = vectorResults.map(v => v.id);
+        const memoryIds = vectorResults.map((v: { id: string | number }) => v.id);
 
         if (memoryIds.length > 0) {
             // Cast to any[] to avoid type issues with raw sql result
@@ -37,7 +39,7 @@ export class OracleCore {
       `;
 
             for (const mem of rawMemories) {
-                const match = vectorResults.find(v => v.id === mem.id);
+                const match = vectorResults.find((v: { id: string | number }) => v.id === mem.id);
                 const score = match?.score || 0;
                 const ageMs = Date.now() - new Date(mem.timestamp).getTime();
 
@@ -137,7 +139,7 @@ export class OracleCore {
             }
         } catch (e) {
             // Table users might not match schema yet
-            console.warn("OracleCore :: Failed to fetch persona instruction", e);
+            logger.warn('OracleCore :: Failed to fetch persona instruction', { error: e });
         }
 
         // D. IDENTITY INJECTION
@@ -151,7 +153,7 @@ export class OracleCore {
                     type: 'IDENTITY_CORE'
                 });
             }
-        } catch (e) { console.warn("OracleCore :: Failed to fetch identity", e); }
+        } catch (e) { logger.warn('OracleCore :: Failed to fetch identity', { error: e }); }
 
         // E. KAIROS TRIGGERS
         let triggerResults: any[] = [];
@@ -172,7 +174,7 @@ export class OracleCore {
                 metadata: t.raw_content,
                 created_at: t.timestamp
             }));
-        } catch (e) { console.warn("OracleCore :: Failed to fetch triggers", e); }
+        } catch (e) { logger.warn('OracleCore :: Failed to fetch triggers', { error: e }); }
 
         return {
             context_fragments: contextPoints.sort((a, b) => b.score - a.score).slice(0, 15),

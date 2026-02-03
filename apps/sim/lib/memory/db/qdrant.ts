@@ -1,49 +1,82 @@
+/**
+ * CHESHIRE MEMORY SYSTEM - Qdrant Vector Database Client
+ * 
+ * Connects to external Cascata Qdrant for vector similarity search.
+ * Implements holographic memory storage with semantic embeddings.
+ */
 
 import { QdrantClient } from '@qdrant/js-client-rest';
-import { env } from '../config/env';
+import { env } from '@/lib/core/config/env';
+import { createLogger } from '@sim/logger';
+
+const logger = createLogger('CheshireVector');
 
 class VectorMemory {
-    private static client: QdrantClient;
+    private static client: QdrantClient | null = null;
 
     public static getInstance(): QdrantClient {
         if (!VectorMemory.client) {
+            const url = env.CASCATA_QDRANT_URL || 'http://localhost:6333';
+
             VectorMemory.client = new QdrantClient({
-                url: env.QDRANT_URL,
-                apiKey: env.QDRANT_API_KEY,
+                url,
+                apiKey: env.CASCATA_QDRANT_API_KEY,
             });
-            console.log("🧠 QDRANT :: VECTOR_CORTEX_CONNECTED");
+
+            logger.info('🧠 CHESHIRE :: Connected to Cascata Qdrant', { url });
         }
         return VectorMemory.client;
     }
 
     /**
      * Initializes collections if they don't exist (Bootstrapping).
+     * Creates a user-specific collection for holographic memory storage.
+     * 
+     * @param userSlug - User identifier for collection naming
      */
-    public static async ensureCollections(userSlug: string) {
+    public static async ensureCollections(userSlug: string): Promise<void> {
         const client = VectorMemory.getInstance();
         const collectionName = `cheshire_${userSlug}`;
+        const embeddingDim = env.CHESHIRE_EMBEDDING_DIM || 1536;
 
         try {
-            // @ts-ignore - Qdrant client types might differ slightly, checking for existence safely
             const response = await client.getCollections();
-            const exists = response.collections.some((c: any) => c.name === collectionName);
+            const exists = response.collections.some((c: { name: string }) => c.name === collectionName);
 
             if (!exists) {
-                console.log(`🧠 QDRANT :: INITIALIZING [${collectionName}] with DIM=${env.EMBEDDING_DIM}...`);
+                logger.info(`🧠 CHESHIRE :: Creating collection [${collectionName}] with DIM=${embeddingDim}`);
 
                 await client.createCollection(collectionName, {
                     vectors: {
-                        size: env.EMBEDDING_DIM,
+                        size: embeddingDim,
                         distance: 'Cosine',
                     },
                     optimizers_config: {
                         default_segment_number: 2,
-                    }
+                    },
+                    // Enable payload indexing for efficient filtering
+                    on_disk_payload: true,
                 });
-                console.log(`🧠 QDRANT :: COLLECTION_CREATED [${collectionName}]`);
+
+                logger.info(`🧠 CHESHIRE :: Collection created [${collectionName}]`);
             }
         } catch (error) {
-            console.error("🧠 QDRANT :: INIT_ERROR", error);
+            logger.error('🧠 CHESHIRE :: Collection initialization error', { error, collectionName });
+            throw error;
+        }
+    }
+
+    /**
+     * Get collection info for health checks
+     */
+    public static async getCollectionInfo(userSlug: string) {
+        const client = VectorMemory.getInstance();
+        const collectionName = `cheshire_${userSlug}`;
+
+        try {
+            return await client.getCollection(collectionName);
+        } catch {
+            return null;
         }
     }
 }
