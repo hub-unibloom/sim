@@ -1,0 +1,9 @@
+{
+    email admin@simstudio.ai
+}
+
+{$DOMAIN_NAME:localhost} {
+    reverse_proxy simstudio:3000
+    
+    # Handle WebSocket upgrades if needed (Caddy does this automatically usually)
+}

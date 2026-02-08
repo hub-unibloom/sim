@@ -1,4 +1,19 @@
 services:
+  caddy:
+    image: caddy:alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      - DOMAIN_NAME=${DOMAIN_NAME:-localhost}
+    volumes:
+      - ./docker/Caddyfile:/etc/caddy/Caddyfile
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - simstudio
+
   simstudio:
     image: ghcr.io/simstudioai/simstudio:latest
     restart: unless-stopped
@@ -10,33 +25,25 @@ services:
           memory: 8G
     environment:
       - NODE_ENV=production
-      - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
-      - BETTER_AUTH_URL=${NEXT_PUBLIC_APP_URL:-http://localhost:3000}
-      - NEXT_PUBLIC_APP_URL=${NEXT_PUBLIC_APP_URL:-http://localhost:3000}
+      - DATABASE_URL=${DATABASE_URL}
+      - BETTER_AUTH_URL=https://${DOMAIN_NAME:-localhost}
+      - NEXT_PUBLIC_APP_URL=https://${DOMAIN_NAME:-localhost}
       - BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET}
       - ENCRYPTION_KEY=${ENCRYPTION_KEY}
       - API_ENCRYPTION_KEY=${API_ENCRYPTION_KEY:-}
       - INTERNAL_API_SECRET=${INTERNAL_API_SECRET}
-      - REDIS_URL=${REDIS_URL:-}
       - COPILOT_API_KEY=${COPILOT_API_KEY}
       - SIM_AGENT_API_URL=${SIM_AGENT_API_URL}
-      - OLLAMA_URL=${OLLAMA_URL:-http://localhost:11434}
-      - SOCKET_SERVER_URL=${SOCKET_SERVER_URL:-http://realtime:3002}
-      - NEXT_PUBLIC_SOCKET_URL=${NEXT_PUBLIC_SOCKET_URL:-http://localhost:3002}
+      - OLLAMA_URL=${OLLAMA_URL:-http://host.docker.internal:11434}
+      - SOCKET_SERVER_URL=http://realtime:3002
+      - NEXT_PUBLIC_SOCKET_URL=https://${DOMAIN_NAME:-localhost}/socket.io/
       # Cheshire Memory System (Cascata Integration)
-      - CASCATA_POSTGRES_URL=${CASCATA_POSTGRES_URL:-}
-      - CASCATA_QDRANT_URL=${CASCATA_QDRANT_URL:-}
-      - CASCATA_QDRANT_API_KEY=${CASCATA_QDRANT_API_KEY:-}
-      - CASCATA_REDIS_URL=${CASCATA_REDIS_URL:-}
+      - CASCATA_POSTGRES_URL=${CASCATA_POSTGRES_URL:-${DATABASE_URL}}
       - CHESHIRE_EMBEDDING_MODEL=${CHESHIRE_EMBEDDING_MODEL:-text-embedding-3-small}
       - CHESHIRE_EMBEDDING_DIM=${CHESHIRE_EMBEDDING_DIM:-1536}
       - CHESHIRE_LLM_MODEL=${CHESHIRE_LLM_MODEL:-gpt-4-turbo}
       - N8N_WEBHOOK_URL=${N8N_WEBHOOK_URL:-}
     depends_on:
-      db:
-        condition: service_healthy
-      migrations:
-        condition: service_completed_successfully
       realtime:
         condition: service_healthy
     healthcheck:
@@ -57,15 +64,12 @@ services:
           memory: 1G
     environment:
       - NODE_ENV=production
-      - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
-      - NEXT_PUBLIC_APP_URL=${NEXT_PUBLIC_APP_URL:-http://localhost:3000}
-      - BETTER_AUTH_URL=${BETTER_AUTH_URL:-http://localhost:3000}
+      - DATABASE_URL=${DATABASE_URL}
+      - NEXT_PUBLIC_APP_URL=https://${DOMAIN_NAME:-localhost}
+      - BETTER_AUTH_URL=https://${DOMAIN_NAME:-localhost}
       - BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET}
       - INTERNAL_API_SECRET=${INTERNAL_API_SECRET}
-      - REDIS_URL=${REDIS_URL:-}
-    depends_on:
-      db:
-        condition: service_healthy
+      # Redis removed - defaulting to memory
     healthcheck:
       test: [ 'CMD', 'wget', '--spider', '--quiet', 'http://127.0.0.1:3002/health' ]
       interval: 90s
@@ -73,33 +77,6 @@ services:
       retries: 3
       start_period: 10s
 
-  migrations:
-    image: ghcr.io/simstudioai/migrations:latest
-    working_dir: /app/packages/db
-    environment:
-      - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
-    depends_on:
-      db:
-        condition: service_healthy
-    command: [ 'bun', 'run', 'db:migrate' ]
-    restart: 'no'
-
-  db:
-    image: pgvector/pgvector:pg17
-    restart: unless-stopped
-    ports:
-      - '${POSTGRES_PORT:-5432}:5432'
-    environment:
-      - POSTGRES_USER=${POSTGRES_USER}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
-      - POSTGRES_DB=${POSTGRES_DB}
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    healthcheck:
-      test: [ 'CMD-SHELL', 'pg_isready -U postgres' ]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-
 volumes:
-  postgres_data:
+  caddy_data:
+  caddy_config:
