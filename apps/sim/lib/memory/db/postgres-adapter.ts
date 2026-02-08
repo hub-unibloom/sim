@@ -364,6 +364,49 @@ export class PostgresCheshireAdapter implements CheshireDBAdapter {
     }
 
     // -------------------------------------------------------------------------
+    // VECTOR OPERATIONS (Replaces Qdrant)
+    // -------------------------------------------------------------------------
+
+    async searchMemories(
+        projectId: string,
+        userUuid: string,
+        embedding: number[],
+        limit = 5,
+        threshold = 0.7
+    ): Promise<CheshireMemory & { score: number }[]> {
+        // Use pgvector cosine distance operator (<=>). 
+        // Similarity = 1 - distance.
+        // We order by distance ASC (closest first).
+
+        // Ensure embedding is formatted as a string vector '[1,2,3...]'
+        const vectorStr = JSON.stringify(embedding);
+
+        const result = await sql`
+            SELECT *, 1 - (embedding <=> ${vectorStr}) as score
+            FROM memories
+            WHERE project_id = ${projectId} 
+            AND user_uuid = ${userUuid}
+            AND (1 - (embedding <=> ${vectorStr})) > ${threshold}
+            ORDER BY embedding <=> ${vectorStr} ASC
+            LIMIT ${limit}
+        `;
+
+        return result.map(row => ({
+            ...this.mapMemory(row),
+            score: row.score
+        }));
+    }
+
+    async upsertMemoryEmbedding(memoryId: string, embedding: number[]): Promise<void> {
+        const vectorStr = JSON.stringify(embedding);
+        await sql`
+            UPDATE memories 
+            SET embedding = ${vectorStr}::vector
+            WHERE id = ${memoryId}
+        `;
+    }
+
+    // -------------------------------------------------------------------------
     // MAPPERS
     // -------------------------------------------------------------------------
 

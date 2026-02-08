@@ -1,4 +1,4 @@
-import { qdrant, VectorOps } from '../db/qdrant';
+import { VectorOps } from '../db/qdrant';
 import { sql } from '../db/postgres';
 import { ActionDispatcher } from '../services/action-dispatch';
 import { createLogger } from '@sim/logger';
@@ -140,7 +140,8 @@ export class GuardianCore {
                 payload: { type: 'SCAR' }
             }]);
         } catch (error) {
-            logger.warn(`🛡️ GUARDIAN :: QDRANT_SYNC_WARNING [${memoryId}] - Payload update failed, but SQL is consistent.`, { error });
+        } catch (error) {
+            logger.warn(`🛡️ GUARDIAN :: PAYLOAD_SYNC_WARNING [${memoryId}] - Payload update failed, but SQL is consistent.`, { error });
         }
 
         logger.info(`🛡️ GUARDIAN :: SCAR_CREATED`, { projectId, memoryId });
