@@ -1,7 +1,4 @@
--- Enable pgvector extension
-CREATE EXTENSION IF NOT EXISTS vector;
-
--- Ensure memories table exists with vector support
+-- Ensure memories table exists for metadata (Vectors stored in Qdrant)
 CREATE TABLE IF NOT EXISTS memories (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     project_id TEXT NOT NULL,
@@ -13,12 +10,10 @@ CREATE TABLE IF NOT EXISTS memories (
     emotional_homeostasis FLOAT[] DEFAULT NULL,
     entropy FLOAT DEFAULT 0,
     is_scar BOOLEAN DEFAULT FALSE,
-    access_count INTEGER DEFAULT 0,
-    embedding vector(1536) -- OpenAI embedding dimension
+    access_count INTEGER DEFAULT 0
 );
 
--- Create indexes for vector search and metadata filtering
-CREATE INDEX IF NOT EXISTS idx_memories_embedding ON memories USING hnsw (embedding vector_cosine_ops);
+-- Create indexes for metadata filtering
 CREATE INDEX IF NOT EXISTS idx_memories_user_project ON memories (user_uuid, project_id);
 CREATE INDEX IF NOT EXISTS idx_memories_type ON memories (type);
 CREATE INDEX IF NOT EXISTS idx_memories_timestamp ON memories (timestamp DESC);

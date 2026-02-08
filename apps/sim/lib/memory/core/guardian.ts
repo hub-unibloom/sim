@@ -1,4 +1,4 @@
-import { VectorOps } from '../db/qdrant';
+import { qdrant, VectorOps } from '../db/qdrant';
 import { sql } from '../db/postgres';
 import { ActionDispatcher } from '../services/action-dispatch';
 import { createLogger } from '@sim/logger';
