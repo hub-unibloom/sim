@@ -171,7 +171,7 @@ export class OracleCore {
             if (hasCheshireDBAdapter()) {
                 project = await getCheshireDBAdapter().getProject(projectId);
             } else {
-                const pResult = await sql`SELECT * FROM projects WHERE id = ${projectId}`;
+                const pResult = await sql`SELECT id, personality_config FROM workspace WHERE id = ${projectId}`;
                 if (pResult.length > 0) {
                     // Manual mapping if adapter missing (fallback)
                     project = { personality_config: pResult[0].personality_config } as CheshireProject;

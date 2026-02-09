@@ -140,7 +140,6 @@ export class GuardianCore {
                 payload: { type: 'SCAR' }
             }]);
         } catch (error) {
-        } catch (error) {
             logger.warn(`🛡️ GUARDIAN :: PAYLOAD_SYNC_WARNING [${memoryId}] - Payload update failed, but SQL is consistent.`, { error });
         }
 

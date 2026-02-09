@@ -2182,3 +2182,62 @@ export const ingestionLogs = pgTable('ingestion_logs', {
   entropyDelta: doublePrecision('entropy_delta'),
   createdAt: timestamp('created_at').defaultNow()
 });
+
+// ============================================================================
+// CHESHIRE MEMORY SYSTEM EXTENSIONS
+// ============================================================================
+
+export const memories = pgTable(
+  'memories',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    projectId: text('project_id').notNull(),
+    userUuid: text('user_uuid').notNull(),
+    semanticText: text('semantic_text').notNull(),
+    type: text('type').notNull(), // 'SEMANTIC', 'EPISODE', 'SCAR'
+    timestamp: timestamp('timestamp', { withTimezone: true }).defaultNow().notNull(),
+    rawContent: jsonb('raw_content').default('{}'),
+    emotionalHomeostasis: doublePrecision('emotional_homeostasis').array(), // No vector type here to avoid dependency issues if extension missing
+    entropy: doublePrecision('entropy').default(0),
+    isScar: boolean('is_scar').default(false),
+    accessCount: integer('access_count').default(0),
+  },
+  (table) => ({
+    userProjectIdx: index('idx_memories_user_project').on(table.userUuid, table.projectId),
+    typeIdx: index('idx_memories_type').on(table.type),
+    timestampIdx: index('idx_memories_timestamp').on(table.timestamp),
+  })
+)
+
+export const cheshireVitalStates = pgTable('cheshire_vital_states', {
+  userUuid: text('user_uuid').notNull(),
+  projectId: text('project_id').notNull(),
+  consciousnessLevel: doublePrecision('consciousness_level').default(0.5),
+  interactionRhythm: integer('interaction_rhythm').default(100),
+  lastInteraction: timestamp('last_interaction', { withTimezone: true }).defaultNow(),
+  emotionalHomeostasis: doublePrecision('emotional_homeostasis').array(),
+}, (table) => ({
+  pk: uniqueIndex('pk_cheshire_vital_states').on(table.userUuid, table.projectId),
+}))
+
+export const graphNodes = pgTable('graph_nodes', {
+  uuid: uuid('uuid').primaryKey().defaultRandom(),
+  userUuid: text('user_uuid').notNull(),
+  projectId: text('project_id').notNull(),
+  label: text('label').notNull(),
+  type: text('type').notNull(),
+  metadata: jsonb('metadata').default('{}'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+}, (table) => ({ // Gin index requires sql operator class, skipping here to avoid error
+}))
+
+export const graphEdges = pgTable('graph_edges', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  sourceUuid: uuid('source_uuid').notNull().references(() => graphNodes.uuid, { onDelete: 'cascade' }),
+  targetUuid: uuid('target_uuid').notNull().references(() => graphNodes.uuid, { onDelete: 'cascade' }),
+  type: text('type').notNull(),
+  weight: doublePrecision('weight').default(1.0),
+  projectId: text('project_id').notNull(),
+  bidirectional: boolean('bidirectional').default(false),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+})
